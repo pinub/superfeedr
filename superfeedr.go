@@ -2,6 +2,7 @@
 package superfeedr
 
 import (
+	"net/http"
 	"time"
 )
 
@@ -32,19 +33,69 @@ type Link struct {
 	Type  string `json:"alternate"`
 }
 
+// Config struct for all possible configuration parameters.
+type Config struct {
+	Username string
+	Password string
+	URL      string
+}
+
 // Superfeedr represents the object used to work with.
 type Superfeedr struct {
-	username string
-	password string
+	config Config
 }
 
 // NewSuperfeedr creates and sets the basic attributes.
-func NewSuperfeedr(username string, password string) *Superfeedr {
-	return &Superfeedr{username: username, password: password}
+func NewSuperfeedr(config Config) *Superfeedr {
+	if config.URL == "" {
+		config.URL = "https://push.superfeedr.com"
+	}
+
+	return &Superfeedr{config: config}
+}
+
+func (f *Superfeedr) client(method string) (*http.Request, error) {
+	if method == "" {
+		method = "GET"
+	}
+
+	req, err := http.NewRequest(method, f.config.URL, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if f.config.Username != "" && f.config.Password != "" {
+		req.SetBasicAuth(f.config.Username, f.config.Password)
+	}
+
+	return req, nil
 }
 
 // Retrieve entries for the given topic. You must be a subscriber of the
 // given topic.
-func (f *Superfeedr) Retrieve(topic string) (Feed, error) {
-	return Feed{}, nil
+func (f *Superfeedr) Retrieve(topic string) (*Feed, error) {
+	req, err := f.client("GET")
+	if err != nil {
+		return nil, err
+	}
+
+	q := req.URL.Query()
+	q.Add("hub.mode", "retrieve")
+	q.Add("hub.topic", topic)
+	q.Add("format", "json")
+	req.URL.RawQuery = q.Encode()
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	// body, err := ioutil.ReadAll(resp.Body)
+	// if err != nil {
+	// return nil, err
+	// }
+
+	return &Feed{}, nil
 }

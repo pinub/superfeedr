@@ -2,6 +2,10 @@
 package superfeedr
 
 import (
+	"bytes"
+	"encoding/json"
+	"io"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	"time"
@@ -45,26 +49,24 @@ const (
 	defaultBaseURL = "https://push.superfeedr.com"
 )
 
-type (
-	Client struct {
-		client *http.Client
+type Client struct {
+	client *http.Client
 
-		BaseURL *url.URL
+	BaseURL *url.URL
 
-		// Reuse a single struct.
-		common service
+	// Reuse a single struct.
+	common service
 
-		// Services used for talking to different parts of the API.
-		Retrieve    *RetrieveService
-		Subscribe   *SubscribeService
-		Unsubscribe *UnsubscribeService
-		List        *ListService
-	}
+	// Services used for talking to different parts of the API.
+	Retrieve    *RetrieveService
+	Subscribe   *SubscribeService
+	Unsubscribe *UnsubscribeService
+	List        *ListService
+}
 
-	service struct {
-		client *Client
-	}
-)
+type service struct {
+	client *Client
+}
 
 func NewClient(httpClient *http.Client) *Client {
 	if httpClient == nil {
@@ -81,6 +83,68 @@ func NewClient(httpClient *http.Client) *Client {
 	c.List = (*ListService)(&c.common)
 
 	return c
+}
+
+func (c *Client) NewRequest(method, urlString string, body interface{}) (*http.Request, error) {
+	rel, err := url.Parse(urlString)
+	if err != nil {
+		return nil, err
+	}
+
+	u := c.BaseURL.ResolveReference(rel)
+
+	var buf io.ReadWriter
+	if body != nil {
+		buf = new(bytes.Buffer)
+		if err := json.NewEncoder(buf).Encode(body); err != nil {
+			return nil, err
+		}
+	}
+
+	req, err := http.NewRequest(method, u.String(), buf)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+func (c *Client) Do(req *http.Request, v interface{}) (*http.Response, error) {
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() {
+		io.CopyN(ioutil.Discard, resp.Body, 512)
+		resp.Body.Close()
+	}()
+
+	err = CheckResponse(resp)
+	if err != nil {
+		return resp, err
+	}
+
+	if v != nil {
+		if w, ok := v.(io.Writer); ok {
+			io.Copy(w, resp.Body)
+		} else {
+			err = json.NewDecoder(resp.Body).Decode(v)
+			if err == io.EOF {
+				err = nil
+			}
+		}
+	}
+
+	return resp, err
+}
+
+func CheckResponse(r *http.Response) error {
+	if c := r.StatusCode; 200 <= c && c <= 299 {
+		return nil
+	}
+
+	return nil
 }
 
 // Superfeedr represents the object used to work with.

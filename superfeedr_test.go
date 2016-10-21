@@ -1,28 +1,36 @@
 package superfeedr
 
 import (
-	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"testing"
-
-	"github.com/stretchr/testify/assert"
 )
 
-func TestRetrieve(t *testing.T) {
-	topic := "https://pinub.github.io/superfeedr/github.com-blog.atom"
-	s := NewSuperfeedr(Config{
-		Username: "username",
-		Password: "password",
-		URL:      "https://pinub.github.io/superfeedr/github.com-blog.atom",
-	})
+var (
+	mux *http.ServeMux
 
-	feed, err := s.Retrieve(topic)
-	assert.Nil(t, err)
-	assert.NotNil(t, feed)
+	client *Client
+
+	server *httptest.Server
+)
+
+func setup() {
+	// test server
+	mux = http.NewServeMux()
+	server = httptest.NewServer(mux)
+
+	client = NewClient(nil)
+	url, _ := url.Parse(server.URL)
+	client.BaseURL = url
 }
 
-func Test(t *testing.T) {
-	s := NewSuperfeedr(Config{})
+func teardown() {
+	server.Close()
+}
 
-	assert.NotNil(t, s)
-	assert.Equal(t, "*superfeedr.Superfeedr", fmt.Sprintf("%T", s))
+func testMethod(t *testing.T, r *http.Request, want string) {
+	if got := r.Method; got != want {
+		t.Errorf("Request method: %v, want %v", got, want)
+	}
 }

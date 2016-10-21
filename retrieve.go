@@ -5,7 +5,7 @@ import "net/http"
 type RetrieveService service
 
 func (s *RetrieveService) Get(topic string) (*Feed, *http.Response, error) {
-	req, err := s.client.NewRequest("GET", "", nil)
+	req, err := s.client.NewRequest("GET", "/", nil)
 	if err != nil {
 		return nil, nil, err
 	}

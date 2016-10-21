@@ -3,6 +3,7 @@ package superfeedr
 
 import (
 	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -38,6 +39,48 @@ type Config struct {
 	Username string
 	Password string
 	URL      string
+}
+
+const (
+	defaultBaseURL = "https://push.superfeedr.com"
+)
+
+type (
+	Client struct {
+		client *http.Client
+
+		BaseURL *url.URL
+
+		// Reuse a single struct.
+		common service
+
+		// Services used for talking to different parts of the API.
+		Retrieve    *RetrieveService
+		Subscribe   *SubscribeService
+		Unsubscribe *UnsubscribeService
+		List        *ListService
+	}
+
+	service struct {
+		client *Client
+	}
+)
+
+func NewClient(httpClient *http.Client) *Client {
+	if httpClient == nil {
+		httpClient = http.DefaultClient
+	}
+
+	baseURL, _ := url.Parse(defaultBaseURL)
+
+	c := &Client{client: httpClient, BaseURL: baseURL}
+	c.common.client = c
+	c.Retrieve = (*RetrieveService)(&c.common)
+	c.Subscribe = (*SubscribeService)(&c.common)
+	c.Unsubscribe = (*UnsubscribeService)(&c.common)
+	c.List = (*ListService)(&c.common)
+
+	return c
 }
 
 // Superfeedr represents the object used to work with.

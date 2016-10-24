@@ -1,5 +1,7 @@
 # Superfeedr
 
+[![Build Status](https://semaphoreci.com/api/v1/dabio/superfeedr/branches/master/shields_badge.svg)](https://semaphoreci.com/dabio/superfeedr)
+
 [Superfeedr](https://superfeedr.com) library for [go](https://golang.org).
 
-![CircleCi](https://circleci.com/gh/pinub/superfeedr.svg?circle-token=d8520fdebb4b8d43d8aad855bd2d0d794e1ba73c)
+Used to learn the [go programming language](https://golang.org). Highly inspired by [Googles GitHub client](https://github.com/google/go-github).

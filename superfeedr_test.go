@@ -2,27 +2,91 @@ package superfeedr
 
 import (
 	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"reflect"
+	"strings"
 	"testing"
-
-	"github.com/stretchr/testify/assert"
 )
 
-func TestRetrieve(t *testing.T) {
-	topic := "https://pinub.github.io/superfeedr/github.com-blog.atom"
-	s := NewSuperfeedr(Config{
-		Username: "username",
-		Password: "password",
-		URL:      "https://pinub.github.io/superfeedr/github.com-blog.atom",
-	})
+var (
+	mux *http.ServeMux
 
-	feed, err := s.Retrieve(topic)
-	assert.Nil(t, err)
-	assert.NotNil(t, feed)
+	client *Client
+
+	server *httptest.Server
+)
+
+func setup() {
+	// test server
+	mux = http.NewServeMux()
+	server = httptest.NewServer(mux)
+
+	client = NewClient(nil)
+	url, _ := url.Parse(server.URL)
+	client.BaseURL = url
 }
 
-func Test(t *testing.T) {
-	s := NewSuperfeedr(Config{})
+func teardown() {
+	server.Close()
+}
 
-	assert.NotNil(t, s)
-	assert.Equal(t, "*superfeedr.Superfeedr", fmt.Sprintf("%T", s))
+func testMethod(t *testing.T, r *http.Request, want string) {
+	if got := r.Method; got != want {
+		t.Errorf("Request method: %v, want %v", got, want)
+	}
+}
+
+func testQuery(t *testing.T, r *http.Request, want string) {
+	strings := strings.Split(r.URL.RawQuery, "&")
+
+	for _, query := range strings {
+		if query == want {
+			return
+		}
+	}
+
+	t.Errorf("Request query: %v, want %v", r.URL.RawQuery, want)
+}
+
+func TestDo(t *testing.T) {
+	setup()
+	defer teardown()
+
+	type foo struct {
+		A string
+	}
+
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if m := "GET"; m != r.Method {
+			t.Errorf("Request method = %v, want %v", r.Method, m)
+		}
+		fmt.Fprintf(w, `{"A":"a"}`)
+	})
+
+	req, _ := client.NewRequest("GET", "/", nil)
+	body := new(foo)
+	client.Do(req, body)
+
+	want := &foo{"a"}
+	if !reflect.DeepEqual(body, want) {
+		t.Errorf("Response body = %v, want %v", body, want)
+	}
+}
+
+func TestDo_httpError(t *testing.T) {
+	setup()
+	defer teardown()
+
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "Bad Request", 400)
+	})
+
+	req, _ := client.NewRequest("GET", "/", nil)
+	_, err := client.Do(req, nil)
+
+	if err == nil {
+		t.Error("Expected HTTP 400 error.")
+	}
 }

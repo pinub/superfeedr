@@ -2,7 +2,13 @@
 package superfeedr
 
 import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io"
+	"io/ioutil"
 	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -40,62 +46,153 @@ type Config struct {
 	URL      string
 }
 
-// Superfeedr represents the object used to work with.
-type Superfeedr struct {
-	config Config
+const (
+	defaultBaseURL = "https://push.superfeedr.com"
+)
+
+// Client manages cummunication with the superfeedr API.
+type Client struct {
+	client *http.Client
+
+	BaseURL *url.URL
+
+	// Reuse a single struct.
+	common service
+
+	// Services used for talking to different parts of the API.
+	Retrieve    *RetrieveService
+	Subscribe   *SubscribeService
+	Unsubscribe *UnsubscribeService
+	List        *ListService
 }
 
-// NewSuperfeedr creates and sets the basic attributes.
-func NewSuperfeedr(config Config) *Superfeedr {
-	if config.URL == "" {
-		config.URL = "https://push.superfeedr.com"
-	}
-
-	return &Superfeedr{config: config}
+type service struct {
+	client *Client
 }
 
-func (f *Superfeedr) client(method string) (*http.Request, error) {
-	if method == "" {
-		method = "GET"
+// NewClient returns a superfeedr API client. If no httpClient is provided,
+// the default http.DefaultClient will be used. Authentication requires a
+// non default client.
+func NewClient(httpClient *http.Client) *Client {
+	if httpClient == nil {
+		httpClient = http.DefaultClient
 	}
 
-	req, err := http.NewRequest(method, f.config.URL, nil)
+	baseURL, _ := url.Parse(defaultBaseURL)
+
+	c := &Client{client: httpClient, BaseURL: baseURL}
+	c.common.client = c
+	c.Retrieve = (*RetrieveService)(&c.common)
+	c.Subscribe = (*SubscribeService)(&c.common)
+	c.Unsubscribe = (*UnsubscribeService)(&c.common)
+	c.List = (*ListService)(&c.common)
+
+	return c
+}
+
+// NewRequest created a new API request. A relative url can be provides in the
+// urlString to be resolved relative to the baseURL of the Client.
+func (c *Client) NewRequest(method, urlString string, body interface{}) (*Request, error) {
+	rel, err := url.Parse(urlString)
 	if err != nil {
 		return nil, err
 	}
 
-	if f.config.Username != "" && f.config.Password != "" {
-		req.SetBasicAuth(f.config.Username, f.config.Password)
+	u := c.BaseURL.ResolveReference(rel)
+
+	var buf io.ReadWriter
+	if body != nil {
+		buf = new(bytes.Buffer)
+		if err := json.NewEncoder(buf).Encode(body); err != nil {
+			return nil, err
+		}
 	}
 
-	return req, nil
+	req, err := http.NewRequest(method, u.String(), buf)
+	if err != nil {
+		return nil, err
+	}
+
+	return newRequest(req), nil
 }
 
-// Retrieve entries for the given topic. You must be a subscriber of the
-// given topic.
-func (f *Superfeedr) Retrieve(topic string) (*Feed, error) {
-	req, err := f.client("GET")
+// Do sends the API request and returns the API response. The response is
+// JSON decoded into the given v interface. If v implements the io.Writer
+// interface, the raw response will be written to v, without decoding it.
+func (c *Client) Do(req *Request, v interface{}) (*http.Response, error) {
+	resp, err := c.client.Do(req.Request)
 	if err != nil {
 		return nil, err
 	}
 
-	q := req.URL.Query()
-	q.Add("hub.mode", "retrieve")
-	q.Add("hub.topic", topic)
-	q.Add("format", "json")
-	req.URL.RawQuery = q.Encode()
+	defer func() {
+		io.CopyN(ioutil.Discard, resp.Body, 512)
+		resp.Body.Close()
+	}()
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	err = checkResponse(resp)
 	if err != nil {
-		return nil, err
+		return resp, err
 	}
-	defer resp.Body.Close()
 
-	// body, err := ioutil.ReadAll(resp.Body)
-	// if err != nil {
-	// return nil, err
-	// }
+	if v != nil {
+		if w, ok := v.(io.Writer); ok {
+			io.Copy(w, resp.Body)
+		} else {
+			err = json.NewDecoder(resp.Body).Decode(v)
+			if err == io.EOF {
+				err = nil
+			}
+		}
+	}
 
-	return &Feed{}, nil
+	return resp, err
+}
+
+// Request is used for abstracting the http.Request to provide a method to add
+// query parameters to a request (AddOptions).
+type Request struct {
+	*http.Request
+}
+
+func newRequest(r *http.Request) *Request {
+	return &Request{Request: r}
+}
+
+// AddOptions adds the given associative array to the request as a query
+// parameter.
+func (r *Request) AddOptions(options map[string]string) {
+	q := r.URL.Query()
+
+	for k, v := range options {
+		q.Add(k, v)
+	}
+
+	r.URL.RawQuery = q.Encode()
+}
+
+// ErrorResponse is used for abstracting the http.Response to provide a more
+// easier way to access errors caused by the API request.
+type ErrorResponse struct {
+	Response *http.Response
+}
+
+// Error returns the error caused by the API.
+func (r *ErrorResponse) Error() string {
+	return fmt.Sprintf(
+		"%v %v: %d",
+		r.Response.Request.Method,
+		r.Response.Request.URL,
+		r.Response.StatusCode,
+	)
+}
+
+func checkResponse(r *http.Response) error {
+	if c := r.StatusCode; 200 <= c && c <= 299 {
+		return nil
+	}
+
+	errorResponse := &ErrorResponse{Response: r}
+
+	return errorResponse
 }

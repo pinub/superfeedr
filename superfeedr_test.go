@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -37,6 +38,18 @@ func testMethod(t *testing.T, r *http.Request, want string) {
 	}
 }
 
+func testQuery(t *testing.T, r *http.Request, want string) {
+	strings := strings.Split(r.URL.RawQuery, "&")
+
+	for _, query := range strings {
+		if query == want {
+			return
+		}
+	}
+
+	t.Errorf("Request query: %v, want %v", r.URL.RawQuery, want)
+}
+
 func TestDo(t *testing.T) {
 	setup()
 	defer teardown()
@@ -59,5 +72,21 @@ func TestDo(t *testing.T) {
 	want := &foo{"a"}
 	if !reflect.DeepEqual(body, want) {
 		t.Errorf("Response body = %v, want %v", body, want)
+	}
+}
+
+func TestDo_httpError(t *testing.T) {
+	setup()
+	defer teardown()
+
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "Bad Request", 400)
+	})
+
+	req, _ := client.NewRequest("GET", "/", nil)
+	_, err := client.Do(req, nil)
+
+	if err == nil {
+		t.Error("Expected HTTP 400 error.")
 	}
 }

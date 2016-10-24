@@ -50,6 +50,7 @@ const (
 	defaultBaseURL = "https://push.superfeedr.com"
 )
 
+// Client manages cummunication with the superfeedr API.
 type Client struct {
 	client *http.Client
 
@@ -69,6 +70,9 @@ type service struct {
 	client *Client
 }
 
+// NewClient returns a superfeedr API client. If no httpClient is provided,
+// the default http.DefaultClient will be used. Authentication requires a
+// non default client.
 func NewClient(httpClient *http.Client) *Client {
 	if httpClient == nil {
 		httpClient = http.DefaultClient
@@ -86,6 +90,8 @@ func NewClient(httpClient *http.Client) *Client {
 	return c
 }
 
+// NewRequest created a new API request. A relative url can be provides in the
+// urlString to be resolved relative to the baseURL of the Client.
 func (c *Client) NewRequest(method, urlString string, body interface{}) (*Request, error) {
 	rel, err := url.Parse(urlString)
 	if err != nil {
@@ -110,6 +116,9 @@ func (c *Client) NewRequest(method, urlString string, body interface{}) (*Reques
 	return newRequest(req), nil
 }
 
+// Do sends the API request and returns the API response. The response is
+// JSON decoded into the given v interface. If v implements the io.Writer
+// interface, the raw response will be written to v, without decoding it.
 func (c *Client) Do(req *Request, v interface{}) (*http.Response, error) {
 	resp, err := c.client.Do(req.Request)
 	if err != nil {
@@ -121,7 +130,7 @@ func (c *Client) Do(req *Request, v interface{}) (*http.Response, error) {
 		resp.Body.Close()
 	}()
 
-	err = CheckResponse(resp)
+	err = checkResponse(resp)
 	if err != nil {
 		return resp, err
 	}
@@ -140,6 +149,8 @@ func (c *Client) Do(req *Request, v interface{}) (*http.Response, error) {
 	return resp, err
 }
 
+// Request is used for abstracting the http.Request to provide a method to add
+// query parameters to a request (AddOptions).
 type Request struct {
 	*http.Request
 }
@@ -148,6 +159,8 @@ func newRequest(r *http.Request) *Request {
 	return &Request{Request: r}
 }
 
+// AddOptions adds the given associative array to the request as a query
+// parameter.
 func (r *Request) AddOptions(options map[string]string) {
 	q := r.URL.Query()
 
@@ -158,10 +171,13 @@ func (r *Request) AddOptions(options map[string]string) {
 	r.URL.RawQuery = q.Encode()
 }
 
+// ErrorResponse is used for abstracting the http.Response to provide a more
+// easier way to access errors caused by the API request.
 type ErrorResponse struct {
 	Response *http.Response
 }
 
+// Error returns the error caused by the API.
 func (r *ErrorResponse) Error() string {
 	return fmt.Sprintf(
 		"%v %v: %d",
@@ -171,16 +187,12 @@ func (r *ErrorResponse) Error() string {
 	)
 }
 
-func CheckResponse(r *http.Response) error {
+func checkResponse(r *http.Response) error {
 	if c := r.StatusCode; 200 <= c && c <= 299 {
 		return nil
 	}
 
 	errorResponse := &ErrorResponse{Response: r}
-	data, err := ioutil.ReadAll(r.Body)
-	if err == nil && data != nil {
-		json.Unmarshal(data, errorResponse)
-	}
 
 	return errorResponse
 }

@@ -2,8 +2,11 @@ package superfeedr
 
 import "net/http"
 
+// RetrieveService handles communication for retrieving all recent
+// notifications of a topic.
 type RetrieveService service
 
+// Get notifications items for the given topic.
 func (s *RetrieveService) Get(topic string) (*Feed, *http.Response, error) {
 	req, err := s.client.NewRequest("GET", "/", nil)
 	if err != nil {

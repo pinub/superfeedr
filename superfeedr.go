@@ -86,7 +86,7 @@ func NewClient(httpClient *http.Client) *Client {
 	return c
 }
 
-func (c *Client) NewRequest(method, urlString string, body interface{}) (*http.Request, error) {
+func (c *Client) NewRequest(method, urlString string, body interface{}) (*Request, error) {
 	rel, err := url.Parse(urlString)
 	if err != nil {
 		return nil, err
@@ -107,11 +107,11 @@ func (c *Client) NewRequest(method, urlString string, body interface{}) (*http.R
 		return nil, err
 	}
 
-	return req, nil
+	return newRequest(req), nil
 }
 
-func (c *Client) Do(req *http.Request, v interface{}) (*http.Response, error) {
-	resp, err := c.client.Do(req)
+func (c *Client) Do(req *Request, v interface{}) (*http.Response, error) {
+	resp, err := c.client.Do(req.Request)
 	if err != nil {
 		return nil, err
 	}
@@ -138,6 +138,24 @@ func (c *Client) Do(req *http.Request, v interface{}) (*http.Response, error) {
 	}
 
 	return resp, err
+}
+
+type Request struct {
+	*http.Request
+}
+
+func newRequest(r *http.Request) *Request {
+	return &Request{Request: r}
+}
+
+func (r *Request) AddOptions(options map[string]string) {
+	q := r.URL.Query()
+
+	for k, v := range options {
+		q.Add(k, v)
+	}
+
+	r.URL.RawQuery = q.Encode()
 }
 
 type ErrorResponse struct {

@@ -10,6 +10,12 @@ func (s *RetrieveService) Get(topic string) (*Feed, *http.Response, error) {
 		return nil, nil, err
 	}
 
+	req.AddOptions(map[string]string{
+		"hub.mode":  "retrieve",
+		"hub.topic": topic,
+		"format":    "json",
+	})
+
 	feed := new(Feed)
 	resp, err := s.client.Do(req, feed)
 	if err != nil {

@@ -90,3 +90,28 @@ func TestDo_httpError(t *testing.T) {
 		t.Error("Expected HTTP 400 error.")
 	}
 }
+
+func TestBasicAuth(t *testing.T) {
+	setup()
+	defer teardown()
+
+	username, password := "u", "p"
+
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		u, p, ok := r.BasicAuth()
+
+		if !ok {
+			t.Errorf("request does not contain basic auth credentials")
+		}
+		if u != username {
+			t.Errorf("request contained basic auth username %q, want %q", u, username)
+		}
+		if p != password {
+			t.Errorf("request contained basic auth password %q, want %q", p, password)
+		}
+	})
+
+	req, _ := client.NewRequest("GET", "/", nil)
+	req.SetBasicAuth(username, password)
+	client.Do(req, nil)
+}

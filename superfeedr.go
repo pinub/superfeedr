@@ -171,6 +171,11 @@ func (r *Request) AddOptions(options map[string]string) {
 	r.URL.RawQuery = q.Encode()
 }
 
+// SetBasicAuth is a shortcut for the underlying function of the Request.
+func (r *Request) SetBasicAuth(username, password string) {
+	r.Request.SetBasicAuth(username, password)
+}
+
 // ErrorResponse is used for abstracting the http.Response to provide a more
 // easier way to access errors caused by the API request.
 type ErrorResponse struct {
